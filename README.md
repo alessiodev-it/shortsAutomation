@@ -1,91 +1,87 @@
-# shortsAutomation
+# polyMetrics
 
-*Finally. My shorts are automated, and it feels so good.*
+*Finally. My data flows in real-time, and it feels so good.*
 
 ---
 
 ## Overview
 
-**shortsAutomation** is a fully automated YouTube Shorts publishing engine. It discovers top‑performing videos from Reddit, downloads and crops them vertically (9:16), enhances audio and visual quality, generates an AI‑selected thumbnail, and uploads the finished clip to YouTube. Designed to run continuously, it supports multiple channels, each with its own subreddit source, tags, category, and OAuth credentials — making it easy to maintain a consistent publishing schedule with minimal manual intervention.
+**polyMetrics** is a real‑time data streaming backend that aggregates live market data from Polymarket and weather forecasts from OpenMeteo, METAR, and tgftp. It serves structured Server‑Sent Events (SSE) to a clean, minimalist frontend, enabling live monitoring of prediction markets and temperature trends across multiple locations. Built with multithreading, dynamic feed discovery, and thread‑safe state management, it was designed for low‑latency observability without the overhead of WebSockets.
 
 ---
 
 ## Key Features
 
-- **Multi‑Channel Support** – Manage multiple YouTube channels from a single instance, each with independent subreddit sources, tags, categories, and OAuth tokens.
-- **Reddit Content Discovery** – Fetches the most upvoted video posts from a given subreddit (top/day) and selects the best one based on upvotes.
-- **Video Processing Pipeline** – Downloads the clip with `yt‑dlp`, crops it vertically to 1080×1920, applies brightness and saturation adjustments, and increases audio pitch.
-- **Smart Thumbnail Generation** – Uses `OpenCV` to analyse frames for motion, sharpness, brightness, and contrast, automatically selecting the most visually appealing frame as the thumbnail.
-- **YouTube Upload** – Uploads the processed video with title, description, tags, category, and privacy setting (public). Supports resumable uploads with progress feedback.
-- **Scheduled Publishing** – After each channel is processed, the script sleeps for 24 hours before repeating the cycle, ensuring a steady publishing rhythm.
-- **Persistent Logging** – All operations are logged to a file with timestamps, allowing for easy debugging and monitoring.
+- **Live Polymarket Streaming** – Connects to Polymarket's WebSocket and REST APIs to stream market prices, order books, and bid/ask spreads for any event slug.
+- **Multi‑Source Weather Data** – Aggregates real‑time and forecast temperatures from OpenMeteo (ensemble models), NOAA METAR, and tgftp.
+- **Dynamic Feed Discovery** – Automatically discovers and instantiates feed modules via `pkgutil` — no manual registration required.
+- **Thread‑Safe State Management** – All feeds maintain internal state with locks, ensuring consistent snapshots for the main thread.
+- **Server‑Sent Events (SSE)** – Lightweight, one‑way streaming to browsers without WebSocket complexity. Includes automatic reconnection and keep‑alive pings.
+- **Real‑Time Frontend** – Clean, dark‑themed dashboard showing:
+  - Wallet address and USDC balance (via Web3/RPC)
+  - API credentials (for debugging)
+  - Per‑worker charts with toggleable views (realtime vs. predicted weather)
+  - Live clock updating every second
+- **Persistent Worker Configuration** – Each worker folder contains a `param.txt` file with a market URL; the loader monitors changes and pushes updates to the fetch loop.
+- **Automatic Context Generation** – Includes `generate_context.py`, which produces a dynamic project context file (directory tree + method index) for LLM‑assisted development.
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/alessiodev-it/shortsAutomation.git
-cd shortsAutomation
+git clone https://github.com/alessiodev-it/polyMetrics.git
+cd polyMetrics
 python -m venv venv
 source venv/bin/activate      # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-### System Dependencies
+### Dependencies (System)
 
-- **ffmpeg** – required for video cropping and audio processing.  
-  Install on Ubuntu/Debian:
-  ```bash
-  sudo apt install ffmpeg
-  ```
-  On macOS:
-  ```bash
-  brew install ffmpeg
-  ```
-- **OpenCV** – installed via `pip`, but may require additional system libraries depending on your platform.
+- **Python 3.10+** (due to `ZoneInfo` and dataclasses)
+- **No additional system libraries** — all dependencies are pip‑installable.
 
 ---
 
 ## Configuration
 
-### 1. Google Cloud Platform Setup
+### 1. Environment Variables
 
-To authenticate with YouTube, you need a **client_secret.json** file from the Google Cloud Console:
+Create a `.env` file in `data/.env` with the following keys:
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project (or select an existing one).
-3. Enable the **YouTube Data API v3**.
-4. Create OAuth 2.0 credentials (Desktop application type).
-5. Download the `client_secret.json` and place it in `data/api/client_secret.json`.
-
-### 2. Channel Configuration
-
-For each YouTube channel you want to automate, create a file in `data/channels/` named `chN.txt` (where `N` is a sequential number, e.g., `ch1.txt`, `ch2.txt`).
-
-The file must contain the following key‑value pairs:
-
-```ini
-name=MyChannelName
-subreddit_source=r/videos
-token_path=token1.pickle
-category=22
-tags=short, viral, fun
+```env
+private_key=YOUR_POLYMARKET_PRIVATE_KEY
+api_key=YOUR_POLYMARKET_API_KEY
+secret=YOUR_POLYMARKET_API_SECRET
+passphrase=YOUR_POLYMARKET_API_PASSPHRASE
 ```
 
-| Field | Description |
-|-------|-------------|
-| `name` | The display name of your channel (used for logging) |
-| `subreddit_source` | The subreddit to fetch videos from, e.g., `r/videos` |
-| `token_path` | The filename of the OAuth token pickle (will be created automatically on first authentication) |
-| `category` | YouTube category ID (e.g., `22` for "People & Vlogs") |
-| `tags` | Comma‑separated list of tags for the video |
+These are used to authenticate with Polymarket's ClobClient and to fetch your USDC balance via Polygon RPC.
 
-> **Note:** The `token_path` must be unique per channel. Tokens are stored in `data/api/`.
+### 2. Worker Configuration
 
-### 3. Initial Authentication
+For each data stream you want to monitor, create a folder under `data/workers/` with a `param.txt` file:
 
-On first run, the script will detect missing tokens and prompt you to authenticate each channel via the browser (or by copying and pasting the redirect URL). Once authenticated, the token pickle is saved and reused for subsequent runs.
+```
+data/workers/
+├── w_london_2026_02_20/
+│   └── param.txt          # url_market=https://polymarket.com/event/...
+├── w_paris_2026_03_01/
+│   └── param.txt
+└── w_tokyo_2026_01_15/
+    └── param.txt
+```
+
+Each `param.txt` must contain a single line:
+
+```ini
+url_market=https://polymarket.com/event/...-in-london-on-feb-20-2026
+```
+
+The URL is parsed to extract:
+- **Slug** – used to switch the Polymarket event feed.
+- **Location** and **date** – used to initialise weather feeds (predict and realtime).
 
 ---
 
@@ -97,111 +93,187 @@ Start the main script:
 python main.py
 ```
 
-The script will:
-1. Initialise the directory structure.
-2. Load and authenticate all configured channels.
-3. For each channel:
-   - Fetch the top video from the specified subreddit.
-   - Download and process the clip.
-   - Generate a thumbnail.
-   - Upload the video to YouTube.
-4. Wait 24 hours, then repeat the loop.
+The server will start on a random available port (printed to the console). Open `http://127.0.0.1:<port>/analyses/analyses.html` in your browser.
 
-All progress is logged to `log.txt` (and also printed to the console).
+### What happens under the hood
 
-To stop the script gracefully, press `Ctrl+C`.
+1. **Initialisation** (`files.init`, `user.init`):
+   - Creates `data/`, `data/workers/`, `data/.env` if missing.
+   - Loads API credentials, derives wallet address, and checks USDC balance.
+   - Scans `data/workers/` for worker folders.
+
+2. **Thread Pool** – For each worker folder, three threads are spawned:
+   - **Loader** – monitors `param.txt` for changes and pushes new `Worker` objects to `config_queue`.
+   - **Fetcher** – consumes `config_queue`, resolves the market slug, and loops over all discovered feed modules:
+     - Polymarket feeds → fetch order books and prices.
+     - Predict weather feeds → fetch ensemble temperature forecasts.
+     - Realtime weather feeds → fetch METAR observations and running max.
+   - **Sender** – consumes `data_queue` and broadcasts each packet via SSE to all connected clients.
+
+3. **SSE Server** – A lightweight HTTP server (`server.py`) serves the static frontend and maintains an SSE endpoint (`/events`). Each connected client receives all broadcast packets.
+
+4. **Frontend** – The dashboard (`analyses.html`, `analyses.js`, `analyses.css`) renders:
+   - Wallet address and USDC balance.
+   - API keys (for debugging).
+   - Per‑worker chart cards with toggleable views (realtime vs. predicted temperature).
+   - Live updating datetime.
 
 ---
 
 ## How It Works
 
-### Main Loop (`main.py`)
+### Data Flow
 
-The script runs an infinite loop that iterates over all configured channels. For each channel, it:
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Worker Folder  │───▶│    Loader       │───▶│  Fetch Queue    │
+│  (param.txt)    │    │  (load.py)      │    │  (Worker obj)   │
+└─────────────────┘    └─────────────────┘    └────────┬────────┘
+                                                       │
+                                                       ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Fetcher (fetch.py)                           │
+│  ┌────────────────┐  ┌────────────────┐  ┌─────────────────────┐    │
+│  │ PolymarketFeed │  │ OpenMeteoFeed  │  │ AviationWeather /   │    │
+│  │ (WS + REST)    │  │ (ensemble)     │  │ Tgftp (METAR)       │    │
+│  └────────┬───────┘  └────────┬───────┘  └───────────┬─────────┘    │
+│           │                   │                      │              │
+│           └───────────────────┼──────────────────────┘              │
+│                               ▼                                     │
+│                        Data Queue (packets)                         │
+└─────────────────────────────────────────────────────────────────────┘
+                                                       │
+                                                       ▼
+┌─────────────────┐    ┌─────────────────────────────────────────────┐
+│    Sender       │───▶│   SSE Broadcast (server.py)                 │
+│   (send.py)     │    │   → All connected clients (browser)         │
+└─────────────────┘    └─────────────────────────────────────────────┘
+```
 
-- Ensures the YouTube service is authenticated (`ch.youtube_build`).
-- Calls the pipeline stages: **fetch**, **build**, **upload**.
-- If any stage fails, the error is logged and the channel is skipped.
-- After all channels are processed, the script calls `wait.fullDay()`, which sleeps until 24 hours have elapsed since the last complete cycle.
+### Feed Modules Interface
 
-### Pipeline Stages
+All feed modules in `src/classes/` follow a standard interface:
 
-#### Fetch
-- **`fetch.clip()`** – Requests the top posts from the subreddit using Reddit's JSON API.
-- Filters for video posts and selects the one with the highest upvotes.
-- Returns the video URL, title, and description.
+| Method | Description |
+|--------|-------------|
+| `__init__(...)` | Initialise internal state and lock. |
+| `configure(...)` | Update parameters without restarting the thread. |
+| `start()` | Start the polling/websocket thread (raises ValueError if already running). |
+| `stop()` | Stop the thread and join it. |
+| `switch_*(...)` | Atomically stop → reset state → restart (e.g., `switch_event`, `switch_station`). |
+| `snapshot()` | Return a thread‑safe deep copy of current data (dict/list). |
 
-#### Build
-- **`downloadVideo()`** – Downloads the video using `yt-dlp` and merges audio/video into a single MP4.
-- **`apply_verticalCrop()`** – Crops the video vertically to 1080×1920 (9:16) using `ffmpeg`. If the source is smaller, it scales up then crops.
-- **`apply_genericEffects()`** – Adjusts brightness (+2%), increases saturation (+10%), and raises audio pitch by 5% for a slightly faster, more energetic feel.
-- **`generate_thumbnail()`** – Analyses frames from 15% to 90% of the video duration, scoring each based on motion, sharpness, brightness, and contrast. The highest‑scoring frame is saved as `thumbnail.png`.
+### Snapshot Contracts (What fetch.py expects)
 
-#### Upload
-- **`upload.clip()`** – Builds the video metadata and initiates a resumable upload to YouTube using the official Google API client.
-- Prints upload progress and returns the video ID.
-- Optionally sets the generated thumbnail.
+#### Polymarket Feed
+```python
+[
+    {
+        "question": "Will the temperature in London be ≥ 20°C?",
+        "outcome_prices": ["0.45", "0.55"],
+        "best_yes_bid": 0.44,
+        "best_yes_ask": 0.46,
+        "best_no_bid": 0.54,
+        "best_no_ask": 0.56,
+        "last_update": 1739884800.0,
+    }
+]
+```
 
-### Scheduling
-- `wait.fullDay()` reads a timestamp file (`data/time_lapsed.txt`) to track when the last full cycle completed.
-- If less than 24 hours have passed, it sleeps for the remaining time.
-- After the sleep, it updates the timestamp file and continues.
+#### Predict Weather Feed (OpenMeteo)
+```python
+{
+    "location": "Wellington",
+    "country": "New Zealand",
+    "date": "2026-02-20",
+    "forecast_temp": 22.5,
+    "forecast_min": 18.2,
+    "forecast_max": 25.1,
+    "model_forecasts": {"ecmwf_ifs025": 22.3, "icon_seamless": 22.8},
+    "hourly_temps": [{"hour": 0, "temp": 18.2}, ...],
+    "unit": "celsius",
+    "last_update": 1739884800.0,
+}
+```
+
+#### Realtime Weather Feed (METAR)
+```python
+{
+    "icao_code": "EGLC",
+    "date": "2026-02-20",
+    "timezone": "Europe/London",
+    "latest_temp": 8,
+    "running_max": 9,
+    "running_max_time": "14:20",
+    "observations_count": 24,
+    "last_update": 1739884800.0,
+}
+```
 
 ---
 
 ## File Structure
 
 ```
-shortsAutomation/
+polyMetrics/
 ├── main.py                    # Entry point
-├── log.txt                    # Persistent log file (auto‑generated)
-├── data/
-│   ├── api/
-│   │   ├── client_secret.json # OAuth client secret (user‑provided)
-│   │   ├── token1.pickle      # OAuth tokens per channel (auto‑generated)
-│   │   ├── token2.pickle
-│   │   └── token3.pickle
-│   ├── channels/
-│   │   ├── ch1.txt            # Channel configuration
-│   │   ├── ch2.txt
-│   │   └── ch3.txt
-│   └── time_lapsed.txt        # Timestamp for 24‑hour scheduling
-├── src/
-│   ├── classes/
-│   │   └── channel.py         # Channel dataclass
+├── requirements.txt           # Python dependencies
+├── generate_context.py        # LLM context generator (for AI-assisted dev)
+├── data/                      # Persistent data
+│   ├── .env                   # API credentials (created by user)
+│   └── workers/               # Worker configuration folders
+│       └── w_*/param.txt      # url_market=...
+├── frontend/                  # Static web dashboard
+│   ├── analyses/
+│   │   ├── analyses.html      # Main dashboard
+│   │   ├── analyses.css       # Dark-themed styles
+│   │   ├── analyses.js        # SSE client + chart orchestration
+│   │   └── display/
+│   │       ├── api.js         # Wallet & balance display
+│   │       └── worker.js      # Chart.js integration (per-worker charts)
+│   ├── favicon.ico
+│   └── utils.js               # Live datetime clock
+├── src/                       # Core Python logic
+│   ├── classes/               # Feed modules (discovered dynamically)
+│   │   ├── polymarket_feeds/
+│   │   │   └── polymarket_feed.py
+│   │   ├── predict_weather_feeds/
+│   │   │   └── openmeteo_feed.py
+│   │   ├── realtime_weather_feeds/
+│   │   │   ├── aviation_weather.py
+│   │   │   └── tgftp.py
+│   │   └── worker.py          # Worker dataclass
 │   ├── init/
-│   │   ├── files.py           # Directory and file initialisation
-│   │   ├── auth.py            # YouTube OAuth flow
-│   │   └── channels.py        # Channel loading and authentication
-│   └── pipeline/
-│       ├── build.py           # Orchestrates video processing
-│       ├── fetch.py           # Reddit data retrieval
-│       ├── upload.py          # YouTube upload logic
-│       ├── wait.py            # 24‑hour scheduler
-│       └── utils/
-│           ├── of_build/
-│           │   ├── crop.py    # Vertical crop using ffmpeg
-│           │   ├── download.py# Video download using yt‑dlp
-│           │   ├── effects.py # Audio/visual enhancements
-│           │   └── thumbnail.py # Frame scoring and thumbnail generation
-│           └── of_fetch/
-│               └── get.py     # Reddit API client
-└── tools/
-    └── logger/
-        └── logger.py          # Custom file/console logger
+│   │   ├── files.py           # Directory & file initialisation
+│   │   └── user.py            # Polymarket auth + USDC balance
+│   ├── pipeline/
+│   │   ├── fetch.py           # Feed orchestration (main loop)
+│   │   ├── load.py            # Worker config watcher
+│   │   └── send.py            # SSE broadcaster
+│   ├── server.py              # HTTP + SSE server
+│   └── utils.py               # Helpers (key mappings, log formatting)
+├── tools/                     # Shared utilities
+│   └── logger/
+│       └── logger.py          # File + console logger
+└── UTILITY/                   # Development aids
+    ├── for_you.txt            # Quick reference for module locations
+    └── give_to_ai/            # AI context files (static + generated)
+        ├── project_context.txt
+        ├── data_flow_map.txt
+        └── how_to_build_context.txt
 ```
 
 ---
 
 ## Dependencies
 
-- `yt-dlp` – video downloading
-- `google-auth-oauthlib`, `google-api-python-client` – YouTube API
-- `opencv-python` – thumbnail generation
-- `requests` – Reddit API calls
-- `ffmpeg` (system) – video processing
+- `web3` – Ethereum blockchain interaction (USDC balance)
+- `py_clob_client` – Polymarket ClobClient for order books and authentication
+- `requests` – HTTP API calls (OpenMeteo, Aviation Weather, tgftp)
+- `websockets` – Polymarket WebSocket subscription
+- `Chart.js` – Frontend charting (loaded via CDN)
 
-See `requirements.txt` for exact versions (create it by running `pip freeze > requirements.txt`).
+See `requirements.txt` for exact versions.
 
 ---
 
@@ -210,4 +282,4 @@ GNU General Public License v3
 
 ---
 
-*Maintained by [Alessio Iacoviello](https://github.com/alessiodev-it) — built for experimentation, refined through practice.*
+*Maintained by [Alessio Iacoviello](https://github.com/alessiodev-it) — built for streaming, designed for insight.*
