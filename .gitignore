@@ -1,0 +1,16 @@
+# --- API & Credenziali (CRITICO) ---
+data/api/client_secret.json
+data/api/*.pickle
+data/api/
+
+# --- Dati di Runtime e Config personali ---
+data/channels/*.txt
+!data/channels/*.example
+
+# --- Python & Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
