@@ -4,15 +4,9 @@
 
 ---
 
-**shortsAutomation** is a fully automated YouTube Shorts publishing engine. It discovers top‑performing videos from Reddit, downloads and crops them vertically (9:16), enhances audio and visual quality, generates an AI‑selected thumbnail, and uploads the finished clip to YouTube. Designed to run continuously, it supports multiple channels, each with its own subreddit source, tags, category, and OAuth credentials — making it easy to maintain a consistent publishing schedule with minimal manual intervention.
-
----
-
 ## Overview
 
-**shortsAutomation** is an automated pipeline for creating and publishing YouTube Shorts. It fetches trending videos from specified subreddits, downloads them, applies vertical cropping (9:16), enhances audio and visual quality, generates an AI‑selected thumbnail, and uploads the final clip to YouTube with custom metadata. The entire process runs in a loop, waiting 24 hours between cycles to simulate a consistent publishing schedule.
-
-This project was built as a personal tool to explore the YouTube API, video processing with `ffmpeg` and `OpenCV`, and Reddit content discovery. It is designed to handle multiple YouTube channels simultaneously, each with its own subreddit source, tags, and authentication credentials.
+**shortsAutomation** is a fully automated YouTube Shorts publishing engine. It discovers top‑performing videos from Reddit, downloads and crops them vertically (9:16), enhances audio and visual quality, generates an AI‑selected thumbnail, and uploads the finished clip to YouTube. Designed to run continuously, it supports multiple channels, each with its own subreddit source, tags, category, and OAuth credentials — making it easy to maintain a consistent publishing schedule with minimal manual intervention.
 
 ---
 
@@ -217,7 +211,3 @@ GNU General Public License v3
 ---
 
 *Maintained by [Alessio Iacoviello](https://github.com/alessiodev-it) — built for experimentation, refined through practice.*
-
----
-
-Ecco! Se hai bisogno di modifiche, dimmi pure.
